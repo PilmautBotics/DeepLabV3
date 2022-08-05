@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 
 import imageio.v2 as imageio
 import matplotlib.pyplot as plt
@@ -8,15 +9,17 @@ import tensorflow as tf
 
 from datetime import datetime
 
-from deeplabv3 import *
-from utils import *
-from metrics import *
+from deeplab.models.metrics import *
+from deeplab.models.deeplabv3 import *
+from deeplab.src.utils.coco_dataset import CocoSegDatasetReader
+from deeplab.src.utils.utils import choose_data, process_path, preprocess
 
 # Parameters used
 ROOT_CITYSCAPE_DIR_PATH = 'home/pguillemaut/deep_ws/data/Cityscapes'
+ROOT_COCOSEG_DIR_PATH = '/home/pguillemaut/Dataset/project-1-at-2022-08-04-12-07-29486ded/'
 IMAGE_SIZE = 512
 NUM_CLASSES = 35
-EPOCHS = 2
+EPOCHS = 10
 BUFFER_SIZE = 500
 BATCH_SIZE = 4  # multiple of 8
 
@@ -42,12 +45,20 @@ def main(args=None):
 
     # create log directory
     today_date_time = datetime.now()
-    log_dir = '../results/deeplabv3/deeplabv3-resnet50-{}'.format(str(today_date_time))
+    
+    log_dir = '/home/pguillemaut/pilmautbotics_ws/DeepLearningLab/deeplab/results/deeplabv3/deeplabv3-resnet50-{}'.format(str(today_date_time))
     if not os.path.isdir(log_dir):
         os.makedirs(log_dir)
-    
+
+    coco_dataset = CocoSegDatasetReader(ROOT_COCOSEG_DIR_PATH)
+    images_list, masks_list = coco_dataset.load_coco_dataset()
+
+
+    print("images_list: {} \n".format(sorted(images_list)))
+    print("image masks: {}".format(sorted(masks_list)))
+
     # defined which data is going to be used for train and val dataset
-    image_list = choose_data(ROOT_CITYSCAPE_DIR_PATH, 'train', 'left_rgb')
+    """image_list = choose_data(ROOT_CITYSCAPE_DIR_PATH, 'train', 'left_rgb')
     mask_list = choose_data(ROOT_CITYSCAPE_DIR_PATH, 'train', 'left_seg')
 
     # val images
@@ -58,31 +69,31 @@ def main(args=None):
     image_list = sorted(image_list)
     mask_list = sorted(mask_list)
     image_val_list = sorted(image_val_list)
-    mask_val_list = sorted(mask_val_list)
+    mask_val_list = sorted(mask_val_list)"""
 
-    print("number of train images/masks are: {} // {}".format(len(image_list), len(mask_list)))
-    print("number of val images/masks are: {} // {} ".format(len(image_val_list), len(mask_val_list)))
+    print("number of train images/masks are: {} // {}".format(len(images_list), len(masks_list)))
+    # print("number of val images/masks are: {} // {} ".format(len(image_val_list), len(mask_val_list)))
 
     # Split Dataset into unmasked and masked image #
-    image_list_ds = tf.data.Dataset.list_files(image_list, shuffle=False)
-    mask_list_ds = tf.data.Dataset.list_files(mask_list, shuffle=False)
-    image_val_list_ds = tf.data.Dataset.list_files(image_val_list, shuffle=False)
-    mask_val_list_ds = tf.data.Dataset.list_files(mask_val_list, shuffle=False)
+    image_list_ds = tf.data.Dataset.list_files(images_list, shuffle=False)
+    mask_list_ds = tf.data.Dataset.list_files(masks_list, shuffle=False)
+    # image_val_list_ds = tf.data.Dataset.list_files(image_val_list, shuffle=False)
+    # mask_val_list_ds = tf.data.Dataset.list_files(mask_val_list, shuffle=False)
 
-    image_filenames = tf.constant(image_list)
-    masks_filenames = tf.constant(mask_list)
+    image_filenames = tf.constant(images_list)
+    masks_filenames = tf.constant(masks_list)
 
-    image_val_filenames = tf.constant(image_val_list)
-    masks_val_filenames = tf.constant(mask_val_list)
+    # image_val_filenames = tf.constant(image_val_list)
+    # masks_val_filenames = tf.constant(mask_val_list)
 
     dataset = tf.data.Dataset.from_tensor_slices((image_filenames, masks_filenames))
-    val_dataset = tf.data.Dataset.from_tensor_slices((image_val_filenames, masks_val_filenames))
+    # val_dataset = tf.data.Dataset.from_tensor_slices((image_val_filenames, masks_val_filenames))
 
     image_ds = dataset.map(process_path)
     processed_image_ds = image_ds.map(preprocess)
-    image_val_ds = val_dataset.map(process_path)
+    # image_val_ds = val_dataset.map(process_path)
 
-    processed_val_image_ds = image_val_ds.map(preprocess)
+    # processed_val_image_ds = image_val_ds.map(preprocess)
 
     # Create the model
     deeplab_v3plus = DeeplabV3Plus(image_size=IMAGE_SIZE, num_classes=NUM_CLASSES)
@@ -101,9 +112,9 @@ def main(args=None):
 
     # Define training parameters #
     processed_image_ds.batch(BATCH_SIZE)
-    processed_val_image_ds.batch(BATCH_SIZE)
+    #processed_val_image_ds.batch(BATCH_SIZE)
     train_dataset = processed_image_ds.cache().shuffle(BUFFER_SIZE).batch(BATCH_SIZE)
-    val_dataset = processed_val_image_ds.cache().shuffle(BUFFER_SIZE).batch(BATCH_SIZE)
+    # val_dataset = processed_val_image_ds.cache().shuffle(BUFFER_SIZE).batch(BATCH_SIZE)
 
     # Define callbacks
     logging = tf.keras.callbacks.TensorBoard(
@@ -133,8 +144,8 @@ def main(args=None):
 
     # Train deepLabV3
     model_history = deeplab_v3plus.fit(
-        train_dataset, validation_data=val_dataset, epochs=EPOCHS, callbacks=callbacks
-    )
+         train_dataset, validation_data=train_dataset, epochs=EPOCHS, callbacks=callbacks
+     )
 
     # Saved model trained
     deep_dir = log_dir + "/deeplab_v3plus_resnet_saved_model"
@@ -143,14 +154,14 @@ def main(args=None):
     plt.figure(figsize=(8, 8))
     plt.title("Learning curve")
     plt.plot(model_history.history["loss"], label="loss")
-    plt.plot(model_history.history["val_loss"], label="val_loss")
-    plt.plot(
-        np.argmin(model_history.history["val_loss"]),
-        np.min(model_history.history["val_loss"]),
-        marker="x",
-        color="r",
-        label="best model",
-    )
+    # plt.plot(model_history.history["val_loss"], label="val_loss")
+    # plt.plot(
+    #    np.argmin(model_history.history["val_loss"]),
+    #    np.min(model_history.history["val_loss"]),
+    #    marker="x",
+    #    color="r",
+    #    label="best model",
+    #)
     plt.xlabel("Epochs")
     plt.ylabel("log_loss")
     plt.legend()

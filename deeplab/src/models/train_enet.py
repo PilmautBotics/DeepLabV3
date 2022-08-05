@@ -8,9 +8,9 @@ import tensorflow as tf
 
 from datetime import datetime
 
-from enet import *
+from models.enet import *
 from utils import *
-from metrics import *
+from models.metrics import *
 
 # Parameters used
 ROOT_CITYSCAPE_DIR_PATH = 'home/pguillemaut/deep_ws/data/Cityscapes'
