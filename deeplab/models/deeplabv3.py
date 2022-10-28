@@ -71,5 +71,6 @@ def DeeplabV3Plus(image_size, num_classes):
         interpolation="bilinear",
     )(x)
     # model_output = Conv2D(num_classes, kernel_size=(1, 1), padding="same")(x)
-    model_output = Conv2D(num_classes, kernel_size=(1, 1), padding="same")(x)
+    x = Conv2D(num_classes, kernel_size=(1, 1), padding="same")(x)
+    model_output = tf.keras.activations.softmax(x, axis=-1)
     return tf.keras.Model(inputs=model_input, outputs=model_output)
